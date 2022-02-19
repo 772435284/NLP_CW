@@ -487,7 +487,8 @@ class DPM_preprocessing:
 				
 				label=line.strip().split('\t')[-2]
 				num_annotators=line.strip().split('\t')[-1]
-				
+				l=line.strip().split('\t')[-1]
+				lbin = 1
 				if index_row < 2208 :
 					rows80.append(
 					{'par_id':par_id,
@@ -495,7 +496,7 @@ class DPM_preprocessing:
 					'keyword':keyword,
 					'country':country,
 					'text':text, 
-					'label':label,
+					'label':lbin,
 					'text_span':text_span
 					}
 					)
@@ -506,7 +507,7 @@ class DPM_preprocessing:
 						'keyword':keyword,
 						'country':country,
 						'text':text, 
-						'label':label,
+						'label':lbin,
 						'text_span':text_span
 						}
 						)
@@ -536,7 +537,7 @@ class DPM_preprocessing:
 					'keyword':keyword,
 					'country':country,
 					'text':text, 
-					'label':label,
+					'label':lbin,
 					'text_span':text_span
 					}
 					)
@@ -547,7 +548,7 @@ class DPM_preprocessing:
 						'keyword':keyword,
 						'country':country,
 						'text':text, 
-						'label':label,
+						'label':lbin,
 						'text_span':text_span
 						}
 						)
@@ -577,7 +578,7 @@ class DPM_preprocessing:
 					'keyword':keyword,
 					'country':country,
 					'text':text, 
-					'label':label,
+					'label':lbin,
 					'text_span':text_span
 					}
 					)
@@ -588,7 +589,7 @@ class DPM_preprocessing:
 						'keyword':keyword,
 						'country':country,
 						'text':text, 
-						'label':label,
+						'label':lbin,
 						'text_span':text_span
 						}
 						)
