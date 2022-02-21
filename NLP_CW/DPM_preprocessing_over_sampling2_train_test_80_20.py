@@ -12,7 +12,8 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from bs4 import BeautifulSoup 
 from nltk.corpus import stopwords 
-
+import sys
+sys.path.append('.')
 
 class DPM_preprocessing:
 

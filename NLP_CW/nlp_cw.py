@@ -9,13 +9,13 @@ Original file is located at
 # Patronizing and Condescending Language Detection
 """
 
-!pip list
-
+import sys,os
 #dependencies
-! python -m pip install nltk
-! python -m pip install wordcloud
-! python -m pip install Unidecode
-! python -m pip install beautifulsoup4
+os.system('pip list')
+os.system('python -m pip install nltk')
+os.system('python -m pip install wordcloud')
+os.system('python -m pip install Unidecode')
+os.system('python -m pip install beautifulsoup4')
 
 import pandas as pd
 import numpy as np
@@ -36,11 +36,13 @@ from collections import Counter
 from urllib import request
 from DPM_preprocessing_over_sampling2_train_test_80_20 import DPM_preprocessing
 
+sys.path.append('.')
+
 os.environ["WANDB_DISABLED"] = "true"
 
 # check gpu
 # check which gpu we're using
-!nvidia-smi
+os.system('nvidia-smi')
 cuda_available = torch.cuda.is_available()
 
 if cuda_available:
@@ -59,7 +61,7 @@ def labels2file(p, outf_path):
 
 # dpm = DontPatronizeMe('.', 'task4_test.tsv')
 
-dpm_pp = DPM_preprocessing('.', 'task4_test.tsv')
+dpm_pp = DPM_preprocessing(os.getcwd(), 'task4_test.tsv')
 
 def count_words(sentence):
     return len(sentence.split())
@@ -504,9 +506,10 @@ labels2file([[k] for k in preds], 'task1.txt')
 preds_task2 = [[random.choice([0,1]) for k in range(7)] for k in range(0,len(dpm_pp.test_set_df))]
 labels2file(preds_task2, 'task2.txt')
 
-!cat task1.txt | head -n 10
 
-!cat task2.txt | head -n 10
+os.system('cat task1.txt | head -n 10')
+# os.system('cat task2.txt | head -n 10')
+# os.system('zip submission.zip task1.txt task2.txt')
+os.system('zip submission.zip task1.txt')
 
-!zip submission.zip task1.txt task2.txt
 
