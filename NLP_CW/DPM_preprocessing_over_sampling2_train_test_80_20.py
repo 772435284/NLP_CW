@@ -12,7 +12,8 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from bs4 import BeautifulSoup 
 from nltk.corpus import stopwords 
-
+import sys
+sys.path.append('.')
 
 class DPM_preprocessing:
 
@@ -26,7 +27,7 @@ class DPM_preprocessing:
 		self._20_negative_df = None
 		self._80_positive_df = None
 		self._20_positive_df = None
-		self.test_set = None
+		self.test_set_df = None
 		self.CONTRACTION_MAP = {
 		"ain't": "is not",
 		"aren't": "are not",
@@ -487,8 +488,13 @@ class DPM_preprocessing:
 				
 				label=line.strip().split('\t')[-2]
 				num_annotators=line.strip().split('\t')[-1]
+<<<<<<< HEAD
 				l=line.strip().split('\t')[-1]
 				lbin = 1
+=======
+				lbin = 1
+				
+>>>>>>> main
 				if index_row < 2208 :
 					rows80.append(
 					{'par_id':par_id,
@@ -664,7 +670,7 @@ class DPM_preprocessing:
 		#self.test_df = [line.strip() for line in open(self.test_path)]
 		rows=[]
 		with open(self.test_path) as f:
-			for line in f.readlines()[4:]:
-				t=line.strip().split('\t')[3].lower()
+			for line in f:
+				t=line.strip().split('\t')
 				rows.append(t)
-		self.test_set = rows
+		self.test_set_df = pd.DataFrame(rows, columns="par_id art_id keyword country text".split())
