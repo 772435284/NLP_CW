@@ -488,13 +488,8 @@ class DPM_preprocessing:
 				
 				label=line.strip().split('\t')[-2]
 				num_annotators=line.strip().split('\t')[-1]
-<<<<<<< HEAD
-				l=line.strip().split('\t')[-1]
-				lbin = 1
-=======
 				lbin = 1
 				
->>>>>>> main
 				if index_row < 2208 :
 					rows80.append(
 					{'par_id':par_id,
