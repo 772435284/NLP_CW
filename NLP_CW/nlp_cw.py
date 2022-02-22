@@ -34,7 +34,8 @@ from tqdm.notebook import tqdm
 import os
 from collections import Counter
 from urllib import request
-from DPM_preprocessing_over_sampling2_train_test_80_20 import DPM_preprocessing
+#from DPM_preprocessing_over_sampling2_train_test_80_20 import DPM_preprocessing
+from dpm_preprocessing import DPMProprocessed
 
 sys.path.append('.')
 
@@ -61,13 +62,12 @@ def labels2file(p, outf_path):
 
 # dpm = DontPatronizeMe('.', 'task4_test.tsv')
 
-dpm_pp = DPM_preprocessing(os.getcwd(), 'task4_test.tsv')
+dpm_pp = DPMProprocessed(os.getcwd(), 'task4_test.tsv')
 
-def count_words(sentence):
-    return len(sentence.split())
+
 # dpm.load_task1()
 # dpm.load_task2(return_one_hot=True)
-# df = dpm.train_task1_df
+df = dpm_pp.train_task1_df
 # df['lenght'] = df['text'].apply(count_words)
 # hist = df['lenght'].hist(by=df['label'], bins = 50, alpha = 0.5)
 #hist = df['lenght'].hist(by=df['orig_label'], bins = 10, alpha = 0.5)
@@ -78,28 +78,16 @@ def count_words(sentence):
 
 
 #Preprocessing and over-sampling
-dpm_pp.load_task1()
-dpm_pp.load_task2(return_one_hot=True)
-dpm_pp.load_all_positive()
-dpm_pp.load_all_negative()
-df = dpm_pp.train_task1_df
-df_80_pos = dpm_pp._80_positive_df
-df_20_pos = dpm_pp._20_positive_df
-df_80_neg = dpm_pp._80_negative_df
-df_20_neg = dpm_pp._20_negative_df
-df['lenght'] = df['text'].apply(count_words)
+
 hist = df['lenght'].hist(by=df['label'], bins = 50, alpha = 0.5)
 #hist = df['lenght'].hist(by=df['orig_label'], bins = 10, alpha = 0.5)
 #hist = df['country'].hist(by=df['label'])
 #hist = df['keyword'].hist(by=df['orig_label'])
 plt.savefig('histo.jpg', dpi=500)
 
-print(df_80_pos.shape)
-print(df_20_pos.shape)
-print(df_80_neg.shape)
-print(df_20_neg.shape)
-train_df = pd.concat([df_80_pos, df_80_neg])
-val_df = pd.concat([df_20_pos, df_20_neg])
+
+train_df, val_df = dpm_pp.get_downsampled_split()
+
 total_df = pd.concat([train_df, val_df])
 print(train_df.shape)
 print(val_df.shape)
