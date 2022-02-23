@@ -86,11 +86,15 @@ hist = df['lenght'].hist(by=df['label'], bins = 50, alpha = 0.5)
 plt.savefig('histo.jpg', dpi=500)
 
 
-train_df, val_df = dpm_pp.get_oversampled_split()
-train_df.to_pickle('traindf.pickle')
-val_df.to_pickle('valdf.pickle')
 
-import pdb;pdb.set_trace()
+if not os.path.isfile('traindf.pickle') or not os.path.isfile('valdf.pickle'):
+  train_df, val_df = dpm_pp.get_oversampled_split()
+  train_df.to_pickle('traindf.pickle')
+  val_df.to_pickle('valdf.pickle')
+else:
+  train_df = pd.read_pickle('traindf.pickle')
+  val_df = pd.read_pickle('valdf.pickle')
+
 total_df = pd.concat([train_df, val_df])
 print(train_df.shape)
 print(val_df.shape)
