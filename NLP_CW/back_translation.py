@@ -1,8 +1,8 @@
 import os
 import random
 import subprocess
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="tangzifeng1998827-12d0a6759fc6.json"
-subprocess.call("python -m pip install google-cloud-translate==2.0.1")
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.path.join(os.path.dirname(__file__), "tangzifeng1998827-12d0a6759fc6.json")
+subprocess.call("python -m pip install google-cloud-translate==2.0.1".split())
 import six
 
 import six
