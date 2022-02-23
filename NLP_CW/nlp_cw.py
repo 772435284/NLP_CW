@@ -86,8 +86,11 @@ hist = df['lenght'].hist(by=df['label'], bins = 50, alpha = 0.5)
 plt.savefig('histo.jpg', dpi=500)
 
 
-train_df, val_df = dpm_pp.get_downsampled_split()
+train_df, val_df = dpm_pp.get_oversampled_split()
+train_df.to_pickle('traindf.pickle')
+val_df.to_pickle('valdf.pickle')
 
+import pdb;pdb.set_trace()
 total_df = pd.concat([train_df, val_df])
 print(train_df.shape)
 print(val_df.shape)
@@ -326,7 +329,7 @@ def main():
         output_dir='./experiment/hate_speech',
         learning_rate = 0.0001,
         logging_steps= 100,
-        per_device_train_batch_size=32,
+        per_device_train_batch_size=8,
         num_train_epochs = 10,
     )
     trainer = Trainer_pcl_detection(
