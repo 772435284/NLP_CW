@@ -14,8 +14,8 @@ class DPMProprocessed(DontPatronizeMe):
 
         self.train_task1_df['lenght'] = self.train_task1_df['text'].apply(lambda s: len(s.split()))
 
-        self.positive_samples = self.train_task1_df[self.train_task1_df['label'] == 1]
-        self.negative_samples = self.train_task1_df[self.train_task1_df['label'] == 0]
+        self.positive_samples = self.train_task1_df[self.train_task1_df['label'] >=2 ]
+        self.negative_samples = self.train_task1_df[self.train_task1_df['label'] < 2 ]
 
     
     def _preprocess_all_df(self):

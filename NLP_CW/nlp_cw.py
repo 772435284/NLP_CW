@@ -326,7 +326,7 @@ def main():
         output_dir='./experiment/hate_speech',
         learning_rate = 0.0001,
         logging_steps= 100,
-        per_device_train_batch_size=32,
+        per_device_train_batch_size=8,
         num_train_epochs = 10,
     )
     trainer = Trainer_pcl_detection(
