@@ -19,7 +19,7 @@ def translate_text(text):
 
 
     translate_client = translate.Client()
-    targets = ['zh-CN', 'af', 'de', 'fr', 'nl']
+    targets = ['zh-CN', 'af', 'de', 'fr', 'nl', 'pt', 'pl', 'es', 'ru', 'el']
     target = targets[random.randint(0, len(targets))]
     if isinstance(text, six.binary_type):
         text = text.decode("utf-8")
