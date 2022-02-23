@@ -1,7 +1,9 @@
+from hashlib import new
 from dont_patronize_me import DontPatronizeMe
 from dpm_preprocessing_utils import apply_preprocessing
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from data_augmentation import augment_substitute_with_context
 
 class DPMProprocessed(DontPatronizeMe):
     def __init__(self, train_path, test_path):
@@ -36,6 +38,29 @@ class DPMProprocessed(DontPatronizeMe):
         df = pd.concat([negative_downsampled_samples, self.positive_samples])
         
         return train_test_split(df, test_size=val_size, stratify=df['label'])
+
+    def get_unbalanced_split(self, val_size = 0.2):
+        
+        return train_test_split(self.train_task1_df, test_size=val_size, stratify=self.train_task1_df['label'])
+
+    def get_oversampled_split(self, oversampling_ratio=10, val_size = 0.2):
+        train_df, val_df = self.get_unbalanced_split(val_size)
+        train_df_pos = train_df[train_df['label'] == 1]
+
+        to_concat = [train_df]
+
+        for _ in range(oversampling_ratio - 1):
+            new_sampled_df = train_df_pos.copy()
+            new_sampled_df['text'] = new_sampled_df['text'].apply(augment_substitute_with_context)
+        
+            to_concat.append(new_sampled_df)
+
+        train_df = pd.concat(to_concat)
+
+        return train_df, val_df
+        
+
+
 
 
 
