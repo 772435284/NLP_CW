@@ -25,7 +25,7 @@ def augment_random_delete(text):
     return aug.augment(text)
 
 
-def augment_back_translation(text):
+def augment_back_translation_google(text):
     return translate_text(text)
 
 
