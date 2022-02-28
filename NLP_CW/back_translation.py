@@ -2,7 +2,7 @@ import os
 import random
 import subprocess
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.path.join(os.path.dirname(__file__), "tangzifeng1998827-12d0a6759fc6.json")
-subprocess.call("python -m pip install google-cloud-translate==2.0.1".split())
+# subprocess.call("python -m pip install google-cloud-translate==2.0.1".split())
 import six
 
 import six
@@ -20,7 +20,7 @@ def translate_text(text):
 
     translate_client = translate.Client()
     targets = ['zh-CN', 'af', 'de', 'fr', 'nl', 'pt', 'pl', 'es', 'ru', 'el']
-    target = targets[random.randint(0, len(targets))]
+    target = targets[random.randint(0, len(targets)-1)]
     if isinstance(text, six.binary_type):
         text = text.decode("utf-8")
     # Text can also be a sequence of strings, in which case this method
