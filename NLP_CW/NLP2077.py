@@ -7,12 +7,10 @@ Original file is located at
     https://colab.research.google.com/drive/1HrO9_fUvOaDklVloYwmGMLWRCGZHm5Ww
 """
 
-#dependencies
-! python -m pip install nltk
-! python -m pip install wordcloud
-! python -m pip install Unidecode
-! python -m pip install beautifulsoup4
 
+
+
+import os
 from dpm_preprocessing import DPMProprocessed
 import torch
 #from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
@@ -26,8 +24,17 @@ from sklearn.metrics import f1_score
 
 device = torch.device("cuda"  if torch.cuda.is_available() else "cpu")
 
-import os
+#dependencies
+# ! python -m pip install nltk
+# ! python -m pip install wordcloud
+# ! python -m pip install Unidecode
+# ! python -m pip install beautifulsoup4
 os.environ["WANDB_DISABLED"] = "true"
+os.system("python -m pip install nltk")
+os.system("python -m pip install wordcloud")
+os.system("python -m pip install Unidecode")
+os.system("python -m pip install beautifulsoup4")
+
 
 
 model_name = "microsoft/deberta-v2-xlarge"
@@ -243,6 +250,6 @@ def labels2file(p, outf_path):
 			outf.write(','.join([str(k) for k in pi])+'\n')
 
 labels2file([[k] for k in preds], 'task1.txt')
-!cat task1.txt | head -n 10
-!zip submission.zip task1.txt
+os.system("!cat task1.txt | head -n 10")
+os.system("!zip submission.zip task1.txt")
 
