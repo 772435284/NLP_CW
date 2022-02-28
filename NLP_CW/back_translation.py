@@ -35,4 +35,4 @@ def translate_text(text):
     # print(u"Back translated language: {}".format(back_translated_result["translatedText"]))
     return back_translated_result['translatedText']
 
-print(translate_text("fuck you!"))
+# print(translate_text("fuck you!"))
