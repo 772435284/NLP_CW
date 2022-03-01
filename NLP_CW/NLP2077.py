@@ -22,7 +22,8 @@ import numpy as np
 from sklearn.metrics import classification_report
 import pandas as pd
 from sklearn.metrics import f1_score
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+torch.cuda.empty_cache()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
