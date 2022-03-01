@@ -11,6 +11,8 @@ Original file is located at
 
 
 import os
+
+from soupsieve import select
 from dpm_preprocessing import DPMProprocessed
 import torch
 #from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
@@ -54,19 +56,27 @@ if WORKING_ENV == 'JONAS':
 
 class PCLDataset(torch.utils.data.Dataset):
 
-    def __init__(self, tokenizer, input_set):
+    def __init__(self, tokenizer, input_set, p_drop=0):
 
         self.tokenizer = tokenizer
         self.texts = list(input_set['text'])
         self.labels = list(input_set['label'])
+        self.p_drop = p_drop
         
     def collate_fn(self, batch):
 
         texts = []
         labels = []
-
         for b in batch:
-            texts.append(b['text'])
+            words = b['text'].split()
+            selected_words = []
+            uniform = np.random.uniform(size=len(words))
+            to_select = uniform > self.p_drop
+            for word, select in zip(words, to_select):
+                if select:
+                    selected_words.append(word)
+
+            texts.append(' '.join(selected_words))
             labels.append(b['label'])
 
         encodings = self.tokenizer(texts, return_tensors='pt', padding=True, truncation=True, max_length=MAX_SEQ_LEN)
@@ -111,7 +121,7 @@ else:
 print("Training set length: ",len(train_df))
 print("Validation set length: ",len(val_df))
 
-train_dataset = PCLDataset(tokenizer, train_df)
+train_dataset = PCLDataset(tokenizer, train_df, p_drop=0.05)
 eval_dataset = PCLDataset(tokenizer, val_df)
 
 class CustomTrainer(Trainer):
@@ -139,8 +149,8 @@ training_args = TrainingArguments(
         logging_steps= 100,
         eval_steps = 500,
         per_device_train_batch_size=4,
-        per_device_eval_batch_size = 4,
-        num_train_epochs = 3,
+        per_device_eval_batch_size =4,
+        num_train_epochs = 4,
         evaluation_strategy= "steps",
         load_best_model_at_end=True,
         metric_for_best_model='pcl_f1'
@@ -250,6 +260,5 @@ def labels2file(p, outf_path):
 			outf.write(','.join([str(k) for k in pi])+'\n')
 
 labels2file([[k] for k in preds], 'task1.txt')
-os.system("!cat task1.txt | head -n 10")
-os.system("!zip submission.zip task1.txt")
+os.system("zip submission.zip task1.txt")
 
