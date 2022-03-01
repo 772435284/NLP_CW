@@ -86,6 +86,7 @@ class PCLDatasetMC(torch.utils.data.Dataset):
         self.text_spans = list(input_set['text_span'])
 
     def collate_fn(self, batch):
+        #import pdb;pdb.set_trace()
         b  = batch[0] #only works with batch size == 1
         prompt = b['text']
         choice_true = b['text_span']
@@ -93,7 +94,6 @@ class PCLDatasetMC(torch.utils.data.Dataset):
         false_start = randint(0, len(prompt.split()) - false_len - 1)
         choice_false= ' '.join(prompt.split()[false_start:false_start+false_len]) #randomly crop words from the base sentence, same size as the true answer to avoid bias of size
 
-        labels = torch.tensor(0).unsqueeze(0)
         if randint(0,1): #randomly select which is going to be choice1 or choice2, to avoid learning everytime that choice1 is true
             choice1 = choice_true
             choice2 = choice_false
@@ -148,7 +148,7 @@ print("Validation set length: ", len(val_df))
 train_dataset = PCLDataset(tokenizer, train_df)
 eval_dataset = PCLDataset(tokenizer, val_df)
 
-train_dataset_MC = PCLDataset(tokenizer, dpm_pp.train_task2_df)
+train_dataset_MC = PCLDatasetMC(tokenizer, dpm_pp.train_task2_df)
 
 class CustomTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
@@ -160,6 +160,20 @@ class CustomTrainer(Trainer):
         weight_scale = 1
         loss_fct = nn.CrossEntropyLoss(weight=torch.tensor([1.0, weight_scale]).to(device))
         loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
+        return ((loss, outputs) if return_outputs else loss)
+
+class CustomTrainerMC(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False):
+        #import pdb;pdb.set_trace()
+        labels = inputs.pop("labels")
+        # forward pass
+        outputs = model(**{k: v.unsqueeze(0) for k, v in inputs.items()}, labels=labels)
+        loss = outputs.loss
+        logits = outputs.logits
+        # weight_scale = len(train_df[train_df['label']==0])/len(train_df[train_df['label']==1])
+        #weight_scale = 1
+        #loss_fct = nn.CrossEntropyLoss(weight=torch.tensor([1.0, weight_scale]).to(device))
+        #loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
         return ((loss, outputs) if return_outputs else loss)
 
 
@@ -206,7 +220,7 @@ trainer = CustomTrainer(
     eval_dataset=eval_dataset
 )
 
-trainer_mc = Trainer(
+trainer_mc = CustomTrainerMC(
     model = model_mc,
     args = training_args_mc,
     data_collator = train_dataset_MC.collate_fn,
@@ -214,7 +228,7 @@ trainer_mc = Trainer(
 )
 
 for _ in range(1000):
-    trainer.train()
+    #trainer.train()
     trainer_mc.train()
 
 trainer.save_model(model_path)
