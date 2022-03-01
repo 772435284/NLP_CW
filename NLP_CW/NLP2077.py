@@ -14,7 +14,7 @@ import os
 from dpm_preprocessing import DPMProprocessed
 import torch
 #from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
+from transformers import AutoConfig, AutoModelForMaskedLM, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
@@ -41,16 +41,141 @@ model_name = "microsoft/deberta-v2-xlarge"
 assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small-discriminator', "microsoft/deberta-v2-xlarge"]
 
 model_path = f'./models/pcl_{model_name}_finetuned/model/'
+model_pretrained_path = f'./models/pcl_{model_name}_pretrained/model/'
 tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
 MAX_SEQ_LEN = 256
 
-WORKING_ENV = 'SERVER' # Can be JONAS, SERVER
+WORKING_ENV = 'JONAS' # Can be JONAS, SERVER
 assert WORKING_ENV in ['JONAS', 'SERVER']
 
 if WORKING_ENV == 'SERVER':
     temp_model_path = f'/hy-tmp/pcl/{model_name}/'
+    temp_pretrain_path = f'/hy-tmp/pcl/pretrain/{model_name}/'
 if WORKING_ENV == 'JONAS': 
     temp_model_path = f'./experiment/pcl/{model_name}/'
+    temp_pretrain_path = f'./experiment/pcl/pretrain/{model_name}/'
+
+dpm_pp = DPMProprocessed('.', 'task4_test.tsv')
+
+df_type = 'UNBALANCED' # Can be UNBALANCED, BACKTRANS, OVERSAMPLING
+assert df_type in ['UNBALANCED', 'BACKTRANS', 'OVERSAMPLING']
+
+if df_type == 'UNBALANCED':
+    train_df_path = 'traindf.pickle'
+    val_df_path = 'valdf.pickle'
+if df_type == 'BACKTRANS': 
+    train_df_path = 'traindf_backtrans.pickle'
+    val_df_path = 'valdf_backtrans.pickle'
+
+
+if not os.path.isfile(train_df_path) or not os.path.isfile(val_df_path):
+  train_df, val_df = dpm_pp.get_unbalanced_split(0.1)
+  train_df.to_pickle('traindf.pickle')
+  val_df.to_pickle('valdf.pickle')
+else:
+  train_df = pd.read_pickle(train_df_path)
+  val_df = pd.read_pickle(val_df_path)
+
+print("Training set length: ",len(train_df))
+print("Validation set length: ",len(val_df))
+
+class PCLDatasetPretrain(torch.utils.data.Dataset):
+
+    def __init__(self, tokenizer, input_set):
+
+        self.tokenizer = tokenizer
+        self.texts = list(input_set['text'])
+        self.mlm_probability = 0.15
+        
+    def collate_fn(self, batch):
+        batch = self.tokenizer(batch, return_tensors='pt', padding=True, truncation=True, max_length=128)
+
+        inputs, labels = self.mask_tokens(batch["input_ids"])
+        return {"input_ids": inputs, "labels": labels}
+
+    def mask_tokens(self, inputs):
+        """
+        Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
+        """
+        if self.tokenizer.mask_token is None:
+            raise ValueError(
+                "This tokenizer does not have a mask token which is necessary for masked language modeling. Remove the --mlm flag if you want to use this tokenizer."
+            )
+        labels = inputs.clone()
+
+        # We sample a few tokens in each sequence for masked-LM training (with probability args.mlm_probability defaults to 0.15 in Bert/RoBERTa)
+        probability_matrix = torch.full(labels.shape, self.mlm_probability)
+        special_tokens_mask = [
+            self.tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
+        ]
+        probability_matrix.masked_fill_(torch.tensor(special_tokens_mask, dtype=torch.bool), value=0.0)
+        
+        if self.tokenizer._pad_token is not None:
+            padding_mask = labels.eq(self.tokenizer.pad_token_id)
+            probability_matrix.masked_fill_(padding_mask, value=0.0)
+        masked_indices = torch.bernoulli(probability_matrix).bool()
+        labels[~masked_indices] = -100  # We only compute loss on masked tokens
+
+        # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+        indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
+        inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(self.tokenizer.mask_token)
+
+        # 10% of the time, we replace masked input tokens with random word
+        indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
+        random_words = torch.randint(len(self.tokenizer), labels.shape, dtype=torch.long)
+        inputs[indices_random] = random_words[indices_random]
+
+        # The rest of the time (10% of the time) we keep the masked input tokens unchanged
+        return inputs, labels
+        
+    def __len__(self):
+        return len(self.texts)
+
+    def __getitem__(self, idx):
+       
+        item = self.texts[idx]
+        return item
+
+class Trainer_MLM(Trainer):
+    def compute_loss(self, model, inputs):
+        
+        labels = inputs['labels']
+
+        outputs = model(**inputs)
+
+        # MLM loss
+        lm_loss = nn.CrossEntropyLoss()
+
+        loss_mlm = lm_loss(outputs.view(-1, model.config.vocab_size), labels.view(-1))
+        
+        loss = loss_mlm
+        
+        return loss
+
+
+config = AutoConfig.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForMaskedLM.from_pretrained(model_name , config = config).to(device)
+
+pretrain_dataset = PCLDatasetPretrain(tokenizer, train_df)
+
+training_args = TrainingArguments(
+        output_dir=temp_pretrain_path,
+        learning_rate = 1e-6,
+        logging_steps= 100,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size = 4,
+        num_train_epochs = 2
+                        )
+
+trainer = Trainer(
+        model=model,                         
+        args=training_args,                 
+        train_dataset=pretrain_dataset,                   
+        data_collator=pretrain_dataset.collate_fn
+    )
+trainer.train()
+trainer.save_model(model_pretrained_path)
 
 class PCLDataset(torch.utils.data.Dataset):
 
@@ -82,34 +207,11 @@ class PCLDataset(torch.utils.data.Dataset):
                 'label': self.labels[idx]}
         return item
 
+
 config = AutoConfig.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name , config = config).to(device)
+model = AutoModelForSequenceClassification.from_pretrained(model_pretrained_path , config = config).to(device)
 
-dpm_pp = DPMProprocessed('.', 'task4_test.tsv')
-
-
-df_type = 'BACKTRANS' # Can be UNBALANCED, BACKTRANS, OVERSAMPLING
-assert df_type in ['UNBALANCED', 'BACKTRANS', 'OVERSAMPLING']
-
-if df_type == 'UNBALANCED':
-    train_df_path = 'traindf.pickle'
-    val_df_path = 'valdf.pickle'
-if df_type == 'BACKTRANS': 
-    train_df_path = 'traindf_backtrans.pickle'
-    val_df_path = 'valdf_backtrans.pickle'
-
-
-if not os.path.isfile(train_df_path) or not os.path.isfile(val_df_path):
-  train_df, val_df = dpm_pp.get_unbalanced_split(0.1)
-  train_df.to_pickle('traindf.pickle')
-  val_df.to_pickle('valdf.pickle')
-else:
-  train_df = pd.read_pickle(train_df_path)
-  val_df = pd.read_pickle(val_df_path)
-
-print("Training set length: ",len(train_df))
-print("Validation set length: ",len(val_df))
 
 train_dataset = PCLDataset(tokenizer, train_df)
 eval_dataset = PCLDataset(tokenizer, val_df)
@@ -140,7 +242,7 @@ training_args = TrainingArguments(
         eval_steps = 500,
         per_device_train_batch_size=4,
         per_device_eval_batch_size = 4,
-        num_train_epochs = 3,
+        num_train_epochs = 4,
         evaluation_strategy= "steps",
         load_best_model_at_end=True,
         metric_for_best_model='pcl_f1'
@@ -250,6 +352,5 @@ def labels2file(p, outf_path):
 			outf.write(','.join([str(k) for k in pi])+'\n')
 
 labels2file([[k] for k in preds], 'task1.txt')
-os.system("!cat task1.txt | head -n 10")
-os.system("!zip submission.zip task1.txt")
+os.system("zip submission.zip task1.txt")
 
