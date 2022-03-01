@@ -45,7 +45,7 @@ model_pretrained_path = f'./models/pcl_{model_name}_pretrained/model/'
 tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
 MAX_SEQ_LEN = 256
 
-WORKING_ENV = 'JONAS' # Can be JONAS, SERVER
+WORKING_ENV = 'SERVER' # Can be JONAS, SERVER
 assert WORKING_ENV in ['JONAS', 'SERVER']
 
 if WORKING_ENV == 'SERVER':
@@ -88,7 +88,7 @@ class PCLDatasetPretrain(torch.utils.data.Dataset):
         self.mlm_probability = 0.15
         
     def collate_fn(self, batch):
-        batch = self.tokenizer(batch, return_tensors='pt', padding=True, truncation=True, max_length=128)
+        batch = self.tokenizer(batch, return_tensors='pt', padding=True, truncation=True, max_length=MAX_SEQ_LEN)
 
         inputs, labels = self.mask_tokens(batch["input_ids"])
         return {"input_ids": inputs, "labels": labels}
@@ -276,7 +276,7 @@ eval_dataset = PCLDataset(tokenizer, val_df)
 
 def predict_pcl(input, tokenizer, model): 
   model.eval()
-  encodings = tokenizer(input, return_tensors='pt', padding=True, truncation=True, max_length=256)
+  encodings = tokenizer(input, return_tensors='pt', padding=True, truncation=True, max_length=MAX_SEQ_LEN)
   encodings = encodings.to(device)
   output = model(**encodings)
   logits = output.logits
