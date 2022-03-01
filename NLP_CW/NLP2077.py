@@ -39,7 +39,7 @@ assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small
 
 model_path = f'./models/pcl_{model_name}_finetuned/model/'
 tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
-MAX_SEQ_LEN = 256
+MAX_SEQ_LEN = 512
 
 WORKING_ENV = 'JONAS'  #  Can be JONAS, SERVER
 assert WORKING_ENV in ['JONAS', 'SERVER']
@@ -145,11 +145,14 @@ else:
 print("Training set length: ", len(train_df))
 print("Validation set length: ", len(val_df))
 
+par_id_val = val_df['par_id'].tolist()
+
+
 train_dataset = PCLDataset(tokenizer, train_df)
 eval_dataset = PCLDataset(tokenizer, val_df)
 
 train_dataset_MC = PCLDatasetMC(tokenizer, dpm_pp.train_task2_df)
-
+train_dataset_MC.drop(train_dataset_MC[train_dataset_MC['par_id'].map(lambda id: id in par_id_val )])
 class CustomTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         labels = inputs.get("labels")
@@ -228,7 +231,7 @@ trainer_mc = CustomTrainerMC(
 )
 
 for _ in range(1000):
-    #trainer.train()
+    trainer.train()
     trainer_mc.train()
 
 trainer.save_model(model_path)
