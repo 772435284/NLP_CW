@@ -11,14 +11,14 @@ import os
 from dpm_preprocessing import DPMProprocessed
 import torch
 # from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, AutoModelForMultipleChoice, Trainer
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 from sklearn.metrics import classification_report
 import pandas as pd
 from sklearn.metrics import f1_score
-
+from random import randint
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # dependencies
@@ -32,7 +32,8 @@ os.system("python -m pip install wordcloud")
 os.system("python -m pip install Unidecode")
 os.system("python -m pip install beautifulsoup4")
 
-model_name = "microsoft/deberta-v2-xlarge"
+#model_name = "microsoft/deberta-v2-xlarge"
+model_name = 'bert-base-uncased' 
 assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small-discriminator',
                       "microsoft/deberta-v2-xlarge"]
 
@@ -40,13 +41,14 @@ model_path = f'./models/pcl_{model_name}_finetuned/model/'
 tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
 MAX_SEQ_LEN = 256
 
-WORKING_ENV = 'SERVER'  #  Can be JONAS, SERVER
+WORKING_ENV = 'JONAS'  #  Can be JONAS, SERVER
 assert WORKING_ENV in ['JONAS', 'SERVER']
 
 if WORKING_ENV == 'SERVER':
     temp_model_path = f'/hy-tmp/pcl/{model_name}/'
 if WORKING_ENV == 'JONAS':
     temp_model_path = f'./experiment/pcl/{model_name}/'
+    temp_model_mc_path = f'./experiment/pcl/mc/{model_name}/'
 
 
 class PCLDataset(torch.utils.data.Dataset):
@@ -76,10 +78,49 @@ class PCLDataset(torch.utils.data.Dataset):
                 'label': self.labels[idx]}
         return item
 
+class PCLDatasetMC(torch.utils.data.Dataset):
+
+    def __init__(self, tokenizer, input_set):
+        self.tokenizer = tokenizer
+        self.texts = list(input_set['text'])
+        self.text_spans = list(input_set['text_span'])
+
+    def collate_fn(self, batch):
+        b  = batch[0] #only works with batch size == 1
+        prompt = b['text']
+        choice_true = b['text_span']
+        false_len = len(choice_true.split()) #the wrong choice has the same size as the right choice
+        false_start = randint(0, len(prompt.split()) - false_len - 1)
+        choice_false= ' '.join(prompt.split()[false_start:false_start+false_len]) #randomly crop words from the base sentence, same size as the true answer to avoid bias of size
+
+        labels = torch.tensor(0).unsqueeze(0)
+        if randint(0,1): #randomly select which is going to be choice1 or choice2, to avoid learning everytime that choice1 is true
+            choice1 = choice_true
+            choice2 = choice_false
+            labels = torch.tensor(0).unsqueeze(0)
+        else:
+            choice1 = choice_false
+            choice2 = choice_true
+            labels = torch.tensor(1).unsqueeze(0)
+
+        encoding = tokenizer([prompt, prompt], [choice1, choice2], return_tensors="pt", padding=True)
+        encoding['labels'] = torch.tensor(labels)
+        return encoding
+
+    def __len__(self):
+        return len(self.texts)
+
+    def __getitem__(self, idx):
+        item = {'text': self.texts[idx],
+                'text_span': self.text_spans[idx]}
+        return item
+
 
 config = AutoConfig.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name, config=config).to(device)
+model_mc = AutoModelForMultipleChoice.from_pretrained(model_name, config=config).to(device)
+model_mc.bert = model.bert #share model
 
 dpm_pp = DPMProprocessed('.', 'task4_test.tsv')
 
@@ -107,6 +148,7 @@ print("Validation set length: ", len(val_df))
 train_dataset = PCLDataset(tokenizer, train_df)
 eval_dataset = PCLDataset(tokenizer, val_df)
 
+train_dataset_MC = PCLDataset(tokenizer, dpm_pp.train_task2_df)
 
 class CustomTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
@@ -121,7 +163,7 @@ class CustomTrainer(Trainer):
         return ((loss, outputs) if return_outputs else loss)
 
 
-validation_loader = DataLoader(eval_dataset)
+#validation_loader = DataLoader(eval_dataset)
 
 
 def compute_metric_eval(arg):
@@ -137,12 +179,21 @@ training_args = TrainingArguments(
     output_dir=temp_model_path,
     learning_rate=1e-6,
     logging_steps=100,
-    eval_steps=500,
+    eval_steps=200,
     per_device_train_batch_size=4,
     per_device_eval_batch_size=4,
-    num_train_epochs=3,
+    num_train_epochs=0.1,
     evaluation_strategy="steps",
-    load_best_model_at_end=True,
+    #load_best_model_at_end=True,
+    # metric_for_best_model='pcl_f1'
+)
+
+training_args_mc = TrainingArguments(
+    output_dir = temp_model_mc_path,
+    learning_rate=1e-6,
+    logging_steps=100,
+    per_device_train_batch_size=1,
+    num_train_epochs=0.1,
     # metric_for_best_model='pcl_f1'
 )
 
@@ -154,7 +205,17 @@ trainer = CustomTrainer(
     compute_metrics=compute_metric_eval,
     eval_dataset=eval_dataset
 )
-trainer.train()
+
+trainer_mc = Trainer(
+    model = model_mc,
+    args = training_args_mc,
+    data_collator = train_dataset_MC.collate_fn,
+    train_dataset = train_dataset_MC
+)
+
+for _ in range(1000):
+    trainer.train()
+    trainer_mc.train()
 
 trainer.save_model(model_path)
 tokenizer.save_pretrained(tokenizer_path)
@@ -165,6 +226,7 @@ val_df.to_pickle('val_df.pickle')
 config = AutoConfig.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 model = AutoModelForSequenceClassification.from_pretrained(model_path, config=config).to(device)
+#model_mc = AutoModelForMultipleChoice.from_pretrained(model_path, config=config).to(device)
 
 train_df = pd.read_pickle('train_df.pickle')
 val_df = pd.read_pickle('val_df.pickle')

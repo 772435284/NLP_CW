@@ -73,10 +73,10 @@ class DontPatronizeMe:
 				finish=line.split('\t')[6]
 				text_span=line.split('\t')[7]
 				label=line.strip().split('\t')[-2]
-				num_annotators=line.strip().split('\t')[-1]
+				num_annotator=line.strip().split('\t')[-1]
 				labelid = tag2id[label]
-				if not labelid in data[(par_id, art_id, text, keyword, country)]:
-					data[(par_id,art_id, text, keyword, country)].append(labelid)
+				if not labelid in data[(par_id, art_id, text, keyword, country, text_span, num_annotator)]:
+					data[(par_id,art_id, text, keyword, country, text_span, num_annotator)].append(labelid)
 
 		par_ids=[]
 		art_ids=[]
@@ -84,13 +84,18 @@ class DontPatronizeMe:
 		keywords=[]
 		countries=[]
 		labels=[]
+		text_spans = []
+		num_annotators = [] 
 
-		for par_id, art_id, par, kw, co in data.keys():
+		for par_id, art_id, par, kw, co, text_span, num_annotator in data.keys():
 			par_ids.append(par_id)
 			art_ids.append(art_id)
 			pars.append(par)
 			keywords.append(kw)
 			countries.append(co)
+			text_spans.append(text_span)
+			num_annotators.append(num_annotator)
+
 
 		for label in data.values():
 			labels.append(label)
@@ -102,12 +107,17 @@ class DontPatronizeMe:
 									pars, 
 									keywords,
 									countries, 
-									labels)), columns=['par_id',
+									labels,
+									text_spans,
+									num_annotators,
+									)), columns=['par_id',
 														'art_id', 
 														'text', 
 														'keyword',
 														'country', 
 														'label',
+														'text_span',
+														'num_annotator'
 														])
 		self.train_task2_df = df
 
