@@ -19,7 +19,7 @@ class DPMProprocessed(DontPatronizeMe):
         self.positive_samples = self.train_task1_df[self.train_task1_df['label'] == 1]
         self.negative_samples = self.train_task1_df[self.train_task1_df['label'] == 0]
         
-        self.train_task1_df.drop(self.train_task1_df[self.train_task1_df['lenght'] > MAX_SEQ_LEN])
+        self.train_task1_df = self.train_task1_df.drop(self.train_task1_df[self.train_task1_df['lenght'] > MAX_SEQ_LEN].index) #only ~60 samples droped its ok
     
     def _preprocess_all_df(self):
         for df in (self.train_task1_df, self.train_task2_df, self.test_set_df):

@@ -8,9 +8,9 @@ import nltk
 import pandas as pd
 from back_translation import translate_text
 
-nltk.download('omw-1.4')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('wordnet')
+# nltk.download('omw-1.4')
+# nltk.download('averaged_perceptron_tagger')
+# nltk.download('wordnet')
 
 def augment_substitute_with_context(text):
     aug = naw.ContextualWordEmbsAug(action='substitute')

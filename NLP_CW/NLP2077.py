@@ -81,7 +81,7 @@ class PCLDataset(torch.utils.data.Dataset):
         return item
 
 
-config = AutoConfig.from_pretrained(model_name)
+config = AutoConfig.from_pretrained(model_name, max_position_embeddings = MAX_SEQ_LEN )
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name, config=config).to(device)
 
@@ -142,8 +142,8 @@ training_args = TrainingArguments(
     learning_rate=1e-6,
     logging_steps=100,
     eval_steps=500,
-    per_device_train_batch_size=3,
-    per_device_eval_batch_size=3,
+    per_device_train_batch_size=4,
+    per_device_eval_batch_size=4,
     num_train_epochs=4,
     evaluation_strategy="steps",
     load_best_model_at_end=True,
@@ -166,7 +166,7 @@ tokenizer.save_pretrained(tokenizer_path)
 train_df.to_pickle('train_df.pickle')
 val_df.to_pickle('val_df.pickle')
 
-config = AutoConfig.from_pretrained(model_name)
+config = AutoConfig.from_pretrained(model_name, max_position_embeddings = MAX_SEQ_LEN)
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 model = AutoModelForSequenceClassification.from_pretrained(model_path, config=config).to(device)
 
