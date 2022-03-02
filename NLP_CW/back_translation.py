@@ -6,7 +6,7 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.path.join(os.path.dirname(__file
 import six
 
 import six
-from google.cloud import translate_v2 as translate
+# from google.cloud import translate_v2 as translate
 
 # os.system("python -m pip install google-cloud-translate==2.0.1")
 
