@@ -4,7 +4,7 @@ from dpm_preprocessing_utils import apply_preprocessing
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from data_augmentation import augment_substitute_with_context
-
+MAX_SEQ_LEN = 150
 class DPMProprocessed(DontPatronizeMe):
     def __init__(self, train_path, test_path):
         super().__init__(train_path, test_path)
@@ -18,8 +18,8 @@ class DPMProprocessed(DontPatronizeMe):
 
         self.positive_samples = self.train_task1_df[self.train_task1_df['label'] == 1]
         self.negative_samples = self.train_task1_df[self.train_task1_df['label'] == 0]
-        print(self.train_task1_df)
-
+        
+        self.train_task1_df.drop(self.train_task1_df[self.train_task1_df['lenght'] > MAX_SEQ_LEN])
     
     def _preprocess_all_df(self):
         for df in (self.train_task1_df, self.train_task2_df, self.test_set_df):

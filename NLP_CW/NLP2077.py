@@ -21,7 +21,7 @@ os.system("python -m pip install wordcloud")
 os.system("python -m pip install Unidecode")
 os.system("python -m pip install beautifulsoup4")
 
-from dpm_preprocessing import DPMProprocessed
+from dpm_preprocessing import DPMProprocessed, MAX_SEQ_LEN
 import torch
 # from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
@@ -43,7 +43,6 @@ assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small
 
 model_path = f'./models/pcl_{model_name}_finetuned/model/'
 tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
-MAX_SEQ_LEN = 256
 
 WORKING_ENV = 'SERVER'  #  Can be JONAS, SERVER
 assert WORKING_ENV in ['JONAS', 'SERVER']
@@ -180,7 +179,7 @@ eval_dataset = PCLDataset(tokenizer, val_df)
 
 def predict_pcl(input, tokenizer, model, threshold=0.5):
     model.eval()
-    encodings = tokenizer(input, return_tensors='pt', padding=True, truncation=True, max_length=256)
+    encodings = tokenizer(input, return_tensors='pt', padding=True, truncation=True, max_length=MAX_SEQ_LEN)
     encodings = encodings.to(device)
     output = model(**encodings)
     logits = output.logits
