@@ -11,7 +11,7 @@ import os
 from dpm_preprocessing import DPMProprocessed
 import torch
 # from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, Trainer
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
@@ -19,6 +19,7 @@ from sklearn.metrics import classification_report
 import pandas as pd
 from sklearn.metrics import f1_score
 from random import randint
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # dependencies
@@ -32,8 +33,8 @@ os.system("python -m pip install wordcloud")
 os.system("python -m pip install Unidecode")
 os.system("python -m pip install beautifulsoup4")
 
-#model_name = "microsoft/deberta-v2-xlarge"
-model_name = 'bert-base-uncased' 
+# model_name = "microsoft/deberta-v2-xlarge"
+model_name = 'bert-base-uncased'
 assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small-discriminator',
                       "microsoft/deberta-v2-xlarge"]
 
@@ -57,17 +58,20 @@ class PCLDataset(torch.utils.data.Dataset):
         self.tokenizer = tokenizer
         self.texts = list(input_set['text'])
         self.labels = list(input_set['label'])
+        self.categories = list(input_set['categories'])
 
     def collate_fn(self, batch):
         texts = []
         labels = []
-
+        categories = []
         for b in batch:
             texts.append(b['text'])
             labels.append(b['label'])
-
+            categories.append(b['category'])
         encodings = self.tokenizer(texts, return_tensors='pt', padding=True, truncation=True, max_length=MAX_SEQ_LEN)
         encodings['labels'] = torch.tensor(labels)
+        encodings['categories'] = torch.tensor(categories)
+
         return encodings
 
     def __len__(self):
@@ -75,52 +79,18 @@ class PCLDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         item = {'text': self.texts[idx],
-                'label': self.labels[idx]}
-        return item
-
-class PCLDatasetMC(torch.utils.data.Dataset):
-
-    def __init__(self, tokenizer, input_set):
-        self.tokenizer = tokenizer
-        self.texts = list(input_set['text'])
-        self.text_spans = list(input_set['text_span'])
-
-    def collate_fn(self, batch):
-        #import pdb;pdb.set_trace()
-        b  = batch[0] #only works with batch size == 1
-        prompt = b['text']
-        choice_true = b['text_span']
-        false_len = len(choice_true.split()) #the wrong choice has the same size as the right choice
-        false_start = randint(0, len(prompt.split()) - false_len - 1)
-        choice_false= ' '.join(prompt.split()[false_start:false_start+false_len]) #randomly crop words from the base sentence, same size as the true answer to avoid bias of size
-
-        if randint(0,1): #randomly select which is going to be choice1 or choice2, to avoid learning everytime that choice1 is true
-            choice1 = choice_true
-            choice2 = choice_false
-            labels = torch.tensor(0).unsqueeze(0)
-        else:
-            choice1 = choice_false
-            choice2 = choice_true
-            labels = torch.tensor(1).unsqueeze(0)
-
-        encoding = tokenizer([prompt, prompt], [choice1, choice2], return_tensors="pt", padding=True)
-        encoding['labels'] = torch.tensor(labels)
-        return encoding
-
-    def __len__(self):
-        return len(self.texts)
-
-    def __getitem__(self, idx):
-        item = {'text': self.texts[idx],
-                'text_span': self.text_spans[idx]}
+                'label': self.labels[idx],
+                'category': self.categories}
         return item
 
 
 config = AutoConfig.from_pretrained(model_name)
+config_mc = AutoConfig.from_pretrained(model_name)
+config_mc.num_labels = 7
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name, config=config).to(device)
-model_mc = AutoModelForSequenceClassification.from_pretrained(model_name, config=config).to(device)
-model_mc.bert = model.bert #share model
+model_mc = AutoModelForSequenceClassification.from_pretrained(model_name, config=config_mc).to(device)
+model_mc.bert = model.bert  # share model
 
 dpm_pp = DPMProprocessed('.', 'task4_test.tsv')
 
@@ -148,13 +118,65 @@ print("Validation set length: ", len(val_df))
 par_id_val = val_df['par_id'].tolist()
 
 
+def aggregate_label(rows):
+    label = np.zeros(7)
+    for index, row in rows.iterrows():
+        label = np.logical_or(label, row['label'])
+    label = label.astype('int')
+    d = {'categories': [label]}
+    # ser = pd.Series([label], copy=False)
+    return pd.DataFrame(data=d)
+
+
+def join_with_categories(df):
+    task2_df = dpm_pp.train_task2_df.copy()
+    # task2_df_grouped = task2_df.groupby('par_id')[['par_id', 'label']].apply(aggregate_label)
+    task2_df_grouped = task2_df.groupby('par_id')[['label']].apply(aggregate_label)
+
+    return pd.merge(df, task2_df_grouped, on=['par_id'])
+
+
+train_df = join_with_categories(train_df)
+val_df = join_with_categories(val_df)
 train_dataset = PCLDataset(tokenizer, train_df)
 eval_dataset = PCLDataset(tokenizer, val_df)
 
-train_dataset_MC = PCLDatasetMC(tokenizer, dpm_pp.train_task2_df)
-train_dataset_MC.drop(train_dataset_MC[train_dataset_MC['par_id'].map(lambda id: id in par_id_val )])
-class CustomTrainer(Trainer):
+
+# train_dataset_MC = PCLDatasetMC(tokenizer, dpm_pp.train_task2_df)
+# train_dataset_MC.drop(train_dataset_MC[train_dataset_MC['par_id'].map(lambda id: id in par_id_val)])
+
+
+class CustomTrainerMC(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
+        # import pdb;pdb.set_trace()
+        labels = inputs.get("categories")
+        # forward pass
+        outputs = model(**inputs)
+        logits = outputs.logits
+        loss_fct = nn.CrossEntropyLoss()
+        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
+        return ((loss, outputs) if return_outputs else loss)
+
+
+training_args_mc = TrainingArguments(
+    output_dir=temp_model_mc_path,
+    learning_rate=1e-6,
+    logging_steps=100,
+    per_device_train_batch_size=1,
+    num_train_epochs=0.1,
+    # metric_for_best_model='pcl_f1'
+)
+
+trainer_mc = CustomTrainerMC(
+    model=model_mc,
+    args=training_args_mc,
+    # data_collator=train_dataset_MC.collate_fn,
+    # train_dataset=train_dataset_MC
+)
+
+
+class CustomTrainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False, trainer_mc: CustomTrainerMC = trainer_mc):
         labels = inputs.get("labels")
         # forward pass
         outputs = model(**inputs)
@@ -162,25 +184,18 @@ class CustomTrainer(Trainer):
         # weight_scale = len(train_df[train_df['label']==0])/len(train_df[train_df['label']==1])
         weight_scale = 1
         loss_fct = nn.CrossEntropyLoss(weight=torch.tensor([1.0, weight_scale]).to(device))
-        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
-        return ((loss, outputs) if return_outputs else loss)
 
-class CustomTrainerMC(Trainer):
-    def compute_loss(self, model, inputs, return_outputs=False):
-        #import pdb;pdb.set_trace()
-        labels = inputs.pop("labels")
-        # forward pass
-        outputs = model(**{k: v.unsqueeze(0) for k, v in inputs.items()}, labels=labels)
-        loss = outputs.loss
-        logits = outputs.logits
-        # weight_scale = len(train_df[train_df['label']==0])/len(train_df[train_df['label']==1])
-        #weight_scale = 1
-        #loss_fct = nn.CrossEntropyLoss(weight=torch.tensor([1.0, weight_scale]).to(device))
-        #loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
-        return ((loss, outputs) if return_outputs else loss)
+        # calculate the mc loss
+        labels_MC = inputs.get("categories")
+        loss_MC = trainer_mc.training_step(trainer_mc.model, **inputs)
+
+        alpha = 0.1
+
+        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1)) + alpha * loss_MC
+        return (loss, outputs) if return_outputs else loss
 
 
-#validation_loader = DataLoader(eval_dataset)
+# validation_loader = DataLoader(eval_dataset)
 
 
 def compute_metric_eval(arg):
@@ -201,16 +216,7 @@ training_args = TrainingArguments(
     per_device_eval_batch_size=4,
     num_train_epochs=0.1,
     evaluation_strategy="steps",
-    #load_best_model_at_end=True,
-    # metric_for_best_model='pcl_f1'
-)
-
-training_args_mc = TrainingArguments(
-    output_dir = temp_model_mc_path,
-    learning_rate=1e-6,
-    logging_steps=100,
-    per_device_train_batch_size=1,
-    num_train_epochs=0.1,
+    # load_best_model_at_end=True,
     # metric_for_best_model='pcl_f1'
 )
 
@@ -221,13 +227,6 @@ trainer = CustomTrainer(
     data_collator=eval_dataset.collate_fn,
     compute_metrics=compute_metric_eval,
     eval_dataset=eval_dataset
-)
-
-trainer_mc = CustomTrainerMC(
-    model = model_mc,
-    args = training_args_mc,
-    data_collator = train_dataset_MC.collate_fn,
-    train_dataset = train_dataset_MC
 )
 
 for _ in range(1000):
@@ -243,7 +242,7 @@ val_df.to_pickle('val_df.pickle')
 config = AutoConfig.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 model = AutoModelForSequenceClassification.from_pretrained(model_path, config=config).to(device)
-#model_mc = AutoModelForMultipleChoice.from_pretrained(model_path, config=config).to(device)
+# model_mc = AutoModelForMultipleChoice.from_pretrained(model_path, config=config).to(device)
 
 train_df = pd.read_pickle('train_df.pickle')
 val_df = pd.read_pickle('val_df.pickle')

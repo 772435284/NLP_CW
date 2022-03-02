@@ -64,7 +64,7 @@ class DPMProprocessed(DontPatronizeMe):
         to_concat = [train_df]
 
         new_sampled_df = train_df.copy()
-        new_sampled_df['text'] = new_sampled_df['text'].apply(augment_back_translation_google)
+        # new_sampled_df['text'] = new_sampled_df['text'].apply(augment_back_translation_google)
 
         to_concat.append(new_sampled_df)
 
