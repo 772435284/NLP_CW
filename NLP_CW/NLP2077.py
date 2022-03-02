@@ -80,13 +80,14 @@ class PCLDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         item = {'text': self.texts[idx],
                 'label': self.labels[idx],
-                'category': self.categories}
+                'category': self.categories[idx]}
         return item
 
 
 config = AutoConfig.from_pretrained(model_name)
 config_mc = AutoConfig.from_pretrained(model_name)
 config_mc.num_labels = 7
+config_mc.problem_type = 'multi_label_classification'
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name, config=config).to(device)
 model_mc = AutoModelForSequenceClassification.from_pretrained(model_name, config=config_mc).to(device)
@@ -122,7 +123,7 @@ def aggregate_label(rows):
     label = np.zeros(7)
     for index, row in rows.iterrows():
         label = np.logical_or(label, row['label'])
-    label = label.astype('int')
+    label = label.astype('float32')
     d = {'categories': [label]}
     # ser = pd.Series([label], copy=False)
     return pd.DataFrame(data=d)
@@ -149,12 +150,12 @@ eval_dataset = PCLDataset(tokenizer, val_df)
 class CustomTrainerMC(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         # import pdb;pdb.set_trace()
-        labels = inputs.get("categories")
+        labels = inputs.get("labels")
         # forward pass
         outputs = model(**inputs)
         logits = outputs.logits
         loss_fct = nn.CrossEntropyLoss()
-        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
+        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels)
         return ((loss, outputs) if return_outputs else loss)
 
 
@@ -179,15 +180,19 @@ class CustomTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, trainer_mc: CustomTrainerMC = trainer_mc):
         labels = inputs.get("labels")
         # forward pass
-        outputs = model(**inputs)
+        inputs_cur = inputs.copy()
+        inputs_cur.pop('categories', None)
+        outputs = model(**inputs_cur)
         logits = outputs.logits
         # weight_scale = len(train_df[train_df['label']==0])/len(train_df[train_df['label']==1])
         weight_scale = 1
         loss_fct = nn.CrossEntropyLoss(weight=torch.tensor([1.0, weight_scale]).to(device))
 
         # calculate the mc loss
-        labels_MC = inputs.get("categories")
-        loss_MC = trainer_mc.training_step(trainer_mc.model, **inputs)
+        inputs_cur = inputs.copy()
+        inputs_cur.pop('labels', None)
+        inputs_cur['labels'] = inputs_cur.pop('categories')
+        loss_MC = trainer_mc.training_step(trainer_mc.model, inputs_cur)
 
         alpha = 0.1
 
@@ -228,10 +233,10 @@ trainer = CustomTrainer(
     compute_metrics=compute_metric_eval,
     eval_dataset=eval_dataset
 )
-
-for _ in range(1000):
-    trainer.train()
-    trainer_mc.train()
+trainer.train()
+# for _ in range(1000):
+#     trainer.train()
+#     trainer_mc.train()
 
 trainer.save_model(model_path)
 tokenizer.save_pretrained(tokenizer_path)
@@ -276,7 +281,7 @@ def evaluate(model, tokenizer, data_loader, threshold=0.5):
 
             pred = predict_pcl(tweets, tokenizer, model, threshold)
 
-            preds.append(np.array(pred['prediction'].cpu()))
+            preds.append(np.array(pred['prediction']))
             tot_labels.append(np.array(labels['label'].cpu()))
             confidences.append(np.array(pred['confidence'].cpu()))
 
