@@ -197,8 +197,9 @@ class CustomTrainer(Trainer):
         inputs_cur = inputs.copy()
         inputs_cur.pop('labels', None)
         inputs_cur['labels'] = inputs_cur.pop('categories')
-        loss_MC = trainer_mc.training_step(trainer_mc.model, inputs_cur)
 
+        loss_MC = trainer_mc.training_step(trainer_mc.model, inputs_cur)
+        print(loss_MC)
         alpha = 0.1
 
         loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1)) + alpha * loss_MC
