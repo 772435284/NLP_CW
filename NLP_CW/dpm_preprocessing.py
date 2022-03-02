@@ -3,7 +3,7 @@ from dont_patronize_me import DontPatronizeMe
 from dpm_preprocessing_utils import apply_preprocessing
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from data_augmentation import augment_substitute_with_context
+# from data_augmentation import augment_substitute_with_context
 
 class DPMProprocessed(DontPatronizeMe):
     def __init__(self, train_path, test_path):
@@ -64,7 +64,7 @@ class DPMProprocessed(DontPatronizeMe):
         to_concat = [train_df]
 
         new_sampled_df = train_df.copy()
-        new_sampled_df['text'] = new_sampled_df['text'].apply(augment_back_translation_google)
+        # new_sampled_df['text'] = new_sampled_df['text'].apply(augment_back_translation_google)
 
         to_concat.append(new_sampled_df)
 
