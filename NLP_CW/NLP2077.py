@@ -11,7 +11,7 @@ import os
 from dpm_preprocessing import DPMProprocessed
 import torch
 # from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, AutoModelForMultipleChoice, Trainer
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, Trainer
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
@@ -119,7 +119,7 @@ class PCLDatasetMC(torch.utils.data.Dataset):
 config = AutoConfig.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name, config=config).to(device)
-model_mc = AutoModelForMultipleChoice.from_pretrained(model_name, config=config).to(device)
+model_mc = AutoModelForSequenceClassification.from_pretrained(model_name, config=config).to(device)
 model_mc.bert = model.bert #share model
 
 dpm_pp = DPMProprocessed('.', 'task4_test.tsv')
