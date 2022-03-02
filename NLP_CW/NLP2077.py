@@ -43,6 +43,7 @@ assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small
 model_path = f'./models/pcl_{model_name}_finetuned/model/'
 tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
 MAX_SEQ_LEN = 256
+do_lower_case = False
 
 WORKING_ENV = 'SERVER' # Can be JONAS, SERVER
 assert WORKING_ENV in ['JONAS', 'SERVER']
@@ -83,7 +84,7 @@ class PCLDataset(torch.utils.data.Dataset):
         return item
 
 config = AutoConfig.from_pretrained(model_name)
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_name, do_lower_case=do_lower_case)
 model = AutoModelForSequenceClassification.from_pretrained(model_name , config = config).to(device)
 
 dpm_pp = DPMProprocessed('.', 'task4_test.tsv')
@@ -163,7 +164,7 @@ train_df.to_pickle('train_df.pickle')
 val_df.to_pickle('val_df.pickle')
 
 config = AutoConfig.from_pretrained(model_name)
-tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, do_lower_case=do_lower_case)
 model = AutoModelForSequenceClassification.from_pretrained(model_path , config = config).to(device)
 
 train_df = pd.read_pickle('train_df.pickle')
@@ -250,6 +251,5 @@ def labels2file(p, outf_path):
 			outf.write(','.join([str(k) for k in pi])+'\n')
 
 labels2file([[k] for k in preds], 'task1.txt')
-os.system("!cat task1.txt | head -n 10")
-os.system("!zip submission.zip task1.txt")
+os.system("zip submission.zip task1.txt")
 
