@@ -8,6 +8,19 @@ Original file is located at
 """
 
 import os
+
+
+# dependencies
+# ! python -m pip install nltk
+# ! python -m pip install wordcloud
+# ! python -m pip install Unidecode
+# ! python -m pip install beautifulsoup4
+os.environ["WANDB_DISABLED"] = "true"
+os.system("python -m pip install nltk")
+os.system("python -m pip install wordcloud")
+os.system("python -m pip install Unidecode")
+os.system("python -m pip install beautifulsoup4")
+
 from dpm_preprocessing import DPMProprocessed
 import torch
 # from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
@@ -21,16 +34,8 @@ from sklearn.metrics import f1_score
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# dependencies
-# ! python -m pip install nltk
-# ! python -m pip install wordcloud
-# ! python -m pip install Unidecode
-# ! python -m pip install beautifulsoup4
 os.environ["WANDB_DISABLED"] = "true"
-os.system("python -m pip install nltk")
-os.system("python -m pip install wordcloud")
-os.system("python -m pip install Unidecode")
-os.system("python -m pip install beautifulsoup4")
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 model_name = "microsoft/deberta-v2-xlarge"
 assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small-discriminator',
@@ -140,10 +145,10 @@ training_args = TrainingArguments(
     eval_steps=500,
     per_device_train_batch_size=4,
     per_device_eval_batch_size=4,
-    num_train_epochs=3,
+    num_train_epochs=4,
     evaluation_strategy="steps",
     load_best_model_at_end=True,
-    # metric_for_best_model='pcl_f1'
+    metric_for_best_model='pcl_f1'
 )
 
 trainer = CustomTrainer(
@@ -179,10 +184,9 @@ def predict_pcl(input, tokenizer, model, threshold=0.5):
     encodings = encodings.to(device)
     output = model(**encodings)
     logits = output.logits
-    preds = np.zeros(logits.shape)
-    preds[preds > threshold] = 1
-
-    return {'prediction': preds, 'confidence': logits[:, 1]}
+    prob = nn.functional.softmax(logits)[:, 1].cpu()
+    preds = np.array([int(prob > threshold)])
+    return {'prediction': preds, 'confidence': prob}
 
 
 def evaluate(model, tokenizer, data_loader, threshold=0.5):
@@ -198,7 +202,7 @@ def evaluate(model, tokenizer, data_loader, threshold=0.5):
 
             pred = predict_pcl(tweets, tokenizer, model, threshold)
 
-            preds.append(np.array(pred['prediction'].cpu()))
+            preds.append(np.array(pred['prediction']))
             tot_labels.append(np.array(labels['label'].cpu()))
             confidences.append(np.array(pred['confidence'].cpu()))
 
@@ -212,6 +216,7 @@ validation_loader = DataLoader(eval_dataset)
 preds, tot_labels, confidences = evaluate(model, tokenizer, validation_loader)
 tot_labels = np.array(tot_labels)
 preds = np.array(preds)
+confidences = np.array(confidences)
 report = classification_report(tot_labels, preds, target_names=["Not PCL", "PCL"], output_dict=True)
 print(report)
 
@@ -219,19 +224,57 @@ print(report['accuracy'])
 print(report['Not PCL']['f1-score'])
 print(report['PCL']['f1-score'])
 
+confidences
+
 # define threshold
 pcl_count_by_threshold = []
 non_pcl_count_by_threshold = []
 f1_by_threshold = []
+precision_by_threshold = []
+recall_by_threshold = []
 for percentage in range(100):
     threshold = percentage / 100
     pcl_count = (confidences > threshold).sum()
     non_pcl_count = (confidences <= threshold).sum()
     pred = np.zeros(tot_labels.shape)
     pred[confidences > threshold] = 1
-    f1_by_threshold.append(f1_score(tot_labels, pred, labels=['Non PCL', 'PCL'])['PCL'])
+    pcl_count_by_threshold.append(pcl_count)
+    non_pcl_count_by_threshold.append(non_pcl_count)
+    f1_by_threshold.append(
+        classification_report(tot_labels, pred, target_names=["Not PCL", "PCL"], output_dict=True)['PCL']['f1-score'])
+    precision_by_threshold.append(
+        classification_report(tot_labels, pred, target_names=["Not PCL", "PCL"], output_dict=True)['PCL']['precision'])
+    recall_by_threshold.append(
+        classification_report(tot_labels, pred, target_names=["Not PCL", "PCL"], output_dict=True)['PCL']['recall'])
 
 best_threshold = np.argmax(f1_by_threshold) / 100
+
+# best_threshold
+np.max(f1_by_threshold)
+
+import matplotlib.pyplot as plt
+
+x = np.arange(0, 100)
+l1 = plt.plot(x, pcl_count_by_threshold, 'r', label='pcl_count_by_threshold')
+l2 = plt.plot(x, non_pcl_count_by_threshold, 'g', label='non_pcl_count_by_threshold')
+
+# plt.plot(x1,y1,'ro-',x2,y2,'g+-',x3,y3,'b^-')
+plt.title('Frequency by threshold')
+plt.xlabel('threshold')
+plt.ylabel('column')
+plt.legend()
+plt.show()
+
+plt.clf()
+l3 = plt.plot(x, f1_by_threshold, 'r', label='f1_by_threshold')
+l4 = plt.plot(x, precision_by_threshold, 'g', label='precision_by_threshold')
+l5 = plt.plot(x, recall_by_threshold, 'b', label='recall_by_threshold')
+plt.title('Metrics by threshold')
+plt.xlabel('threshold')
+plt.ylabel('column')
+plt.legend()
+plt.show()
+
 """# Test set"""
 
 dpm_pp.load_test()
@@ -241,7 +284,7 @@ test_dataset = PCLDataset(tokenizer, test_df)
 
 test_loader = DataLoader(test_dataset)
 
-preds, tot_labels, confidences = evaluate(model, tokenizer, test_loader, best_threshold)
+preds, tot_labels, confidences = evaluate(model, tokenizer, test_loader, 0.5)
 tot_labels = np.array(tot_labels)
 preds = np.array(preds)
 # report = classification_report(tot_labels, preds, target_names=["Not PCL","PCL"], output_dict= True)
