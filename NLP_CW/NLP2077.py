@@ -140,12 +140,13 @@ def compute_metric_eval(arg):
 
 training_args = TrainingArguments(
     output_dir=temp_model_path,
-    learning_rate=1e-6,
+    learning_rate=1e-5,
     logging_steps=100,
     eval_steps=500,
-    per_device_train_batch_size=4,
-    per_device_eval_batch_size=4,
-    num_train_epochs=4,
+    warmup_steps = 50,
+    per_device_train_batch_size=7,
+    per_device_eval_batch_size=7,
+    num_train_epochs=5,
     evaluation_strategy="steps",
     load_best_model_at_end=True,
     metric_for_best_model='pcl_f1'
