@@ -72,10 +72,10 @@ class DontPatronizeMe:
 				start=line.split('\t')[5]
 				finish=line.split('\t')[6]
 				text_span=line.split('\t')[7]
-				if 5* len(text_span.split()) > len(text.split()): #do not use span that are more than half of the text
+				if 2* len(text_span.split()) > len(text.split()): #do not use span that are more than half of the text
 					continue
-				if len(text.split()) > 150:
-					continue
+				# if len(text.split()) > 150:
+				# 	continue
 				label=line.strip().split('\t')[-2]
 				num_annotator=line.strip().split('\t')[-1]
 				labelid = tag2id[label]

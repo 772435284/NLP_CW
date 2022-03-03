@@ -32,14 +32,14 @@ os.system("python -m pip install wordcloud")
 os.system("python -m pip install Unidecode")
 os.system("python -m pip install beautifulsoup4")
 
-#model_name = "microsoft/deberta-v2-xlarge"
-model_name = 'bert-base-uncased' 
-assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small-discriminator',
+model_name = "google/bigbird-roberta-large"
+#model_name = 'bert-base-uncased' 
+assert model_name in ['google/bigbird-roberta-large', 'bert-base-uncased', 'google/electra-small-discriminator',
                       "microsoft/deberta-v2-xlarge"]
 
 model_path = f'./models/pcl_{model_name}_finetuned/model/'
 tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
-MAX_SEQ_LEN = 512
+MAX_SEQ_LEN = 1024
 
 WORKING_ENV = 'JONAS'  #  Can be JONAS, SERVER
 assert WORKING_ENV in ['JONAS', 'SERVER']
@@ -147,12 +147,12 @@ print("Validation set length: ", len(val_df))
 
 par_id_val = val_df['par_id'].tolist()
 
+train_task2 = dpm_pp.train_task2_df.drop(dpm_pp.train_task2_df[dpm_pp.train_task2_df['par_id'].map(lambda id: (id in par_id_val) )].index)
 
 train_dataset = PCLDataset(tokenizer, train_df)
 eval_dataset = PCLDataset(tokenizer, val_df)
 
-train_dataset_MC = PCLDatasetMC(tokenizer, dpm_pp.train_task2_df)
-train_dataset_MC.drop(train_dataset_MC[train_dataset_MC['par_id'].map(lambda id: id in par_id_val )])
+train_dataset_MC = PCLDatasetMC(tokenizer, train_task2)
 class CustomTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         labels = inputs.get("labels")
@@ -196,13 +196,13 @@ training_args = TrainingArguments(
     output_dir=temp_model_path,
     learning_rate=1e-6,
     logging_steps=100,
-    eval_steps=200,
+    eval_steps=500,
     per_device_train_batch_size=4,
     per_device_eval_batch_size=4,
     num_train_epochs=0.1,
     evaluation_strategy="steps",
-    #load_best_model_at_end=True,
-    # metric_for_best_model='pcl_f1'
+    load_best_model_at_end=True,
+    metric_for_best_model='pcl_f1'
 )
 
 training_args_mc = TrainingArguments(
@@ -210,7 +210,7 @@ training_args_mc = TrainingArguments(
     learning_rate=1e-6,
     logging_steps=100,
     per_device_train_batch_size=1,
-    num_train_epochs=0.1,
+    num_train_epochs=0.5,
     # metric_for_best_model='pcl_f1'
 )
 
@@ -230,7 +230,7 @@ trainer_mc = CustomTrainerMC(
     train_dataset = train_dataset_MC
 )
 
-for _ in range(1000):
+for _ in range(30):
     trainer.train()
     trainer_mc.train()
 
@@ -254,7 +254,7 @@ eval_dataset = PCLDataset(tokenizer, val_df)
 
 def predict_pcl(input, tokenizer, model, threshold=0.5):
     model.eval()
-    encodings = tokenizer(input, return_tensors='pt', padding=True, truncation=True, max_length=256)
+    encodings = tokenizer(input, return_tensors='pt', padding=True, truncation=True, max_length=MAX_SEQ_LEN)
     encodings = encodings.to(device)
     output = model(**encodings)
     logits = output.logits
@@ -347,5 +347,5 @@ def labels2file(p, outf_path):
 
 
 labels2file([[k] for k in preds], 'task1.txt')
-os.system("!cat task1.txt | head -n 10")
-os.system("!zip submission.zip task1.txt")
+os.system("cat task1.txt | head -n 10")
+os.system("zip submission.zip task1.txt")
