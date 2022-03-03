@@ -9,12 +9,13 @@ Original file is located at
 
 import os
 
-
 # dependencies
 # ! python -m pip install nltk
 # ! python -m pip install wordcloud
 # ! python -m pip install Unidecode
 # ! python -m pip install beautifulsoup4
+import pandas
+
 os.environ["WANDB_DISABLED"] = "true"
 os.system("python -m pip install nltk")
 os.system("python -m pip install wordcloud")
@@ -24,7 +25,8 @@ os.system("python -m pip install beautifulsoup4")
 from dpm_preprocessing import DPMProprocessed
 import torch
 # from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, \
+    AutoModelForPreTraining, AutoModel, BertPreTrainedModel, BertModel
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
@@ -45,7 +47,7 @@ assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small
 
 model_path = f'./models/pcl_{model_name}_finetuned/model/'
 tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
-MAX_SEQ_LEN = 512
+MAX_SEQ_LEN = 256
 
 WORKING_ENV = 'JONAS'  #  Can be JONAS, SERVER
 assert WORKING_ENV in ['JONAS', 'SERVER']
@@ -91,13 +93,13 @@ class PCLDataset(torch.utils.data.Dataset):
 
 
 config = AutoConfig.from_pretrained(model_name)
-config_mc = AutoConfig.from_pretrained(model_name)
-config_mc.num_labels = 7
-config_mc.problem_type = 'multi_label_classification'
+# config_mc = AutoConfig.from_pretrained(model_name)
+# config_mc.num_labels = 7
+# config_mc.problem_type = 'multi_label_classification'
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name, config=config).to(device)
-model_mc = AutoModelForSequenceClassification.from_pretrained(model_name, config=config_mc).to(device)
-model_mc.bert = model.bert  # share model
+# model = AutoModelForPreTraining.from_pretrained(model_name, config=config).to(device)
+# model_mc = AutoModelForSequenceClassification.from_pretrained(model_name, config=config_mc).to(device)
+# model_mc.bert = model.bert  # share model
 
 dpm_pp = DPMProprocessed('.', 'task4_test.tsv')
 
@@ -140,11 +142,28 @@ def join_with_categories(df):
     # task2_df_grouped = task2_df.groupby('par_id')[['par_id', 'label']].apply(aggregate_label)
     task2_df_grouped = task2_df.groupby('par_id')[['label']].apply(aggregate_label)
 
-    return pd.merge(df, task2_df_grouped, on=['par_id'])
+    return pd.merge(df, task2_df_grouped, on=['par_id'], how='left')
 
+def fillna(df):
+    df_copy = pd.DataFrame()
+    for index, row in df.iterrows():
+        if row.isna().any():
+            temp_df = pd.DataFrame({"par_id": row["par_id"],
+                                    "art_id": row["art_id"],
+                                    "keyword": row["keyword"],
+                                    "country": row["country"],
+                                    "text": row["text"],
+                                    "label": row["label"],
+                                    "orig_label": row["orig_label"],
+                                    "lenght": row[ "lenght"],
+                                    "categories": [np.zeros(7)]})
+            df_copy = df_copy.append(temp_df)
+        else:
+            df_copy = df_copy.append(row)
+    return df_copy
 
-train_df = join_with_categories(train_df)
-val_df = join_with_categories(val_df)
+train_df = fillna(join_with_categories(train_df))
+val_df = fillna(join_with_categories(val_df))
 train_dataset = PCLDataset(tokenizer, train_df)
 eval_dataset = PCLDataset(tokenizer, val_df)
 
@@ -153,57 +172,181 @@ eval_dataset = PCLDataset(tokenizer, val_df)
 # train_dataset_MC.drop(train_dataset_MC[train_dataset_MC['par_id'].map(lambda id: id in par_id_val)])
 
 
-class CustomTrainerMC(Trainer):
-    def compute_loss(self, model, inputs, return_outputs=False):
-        labels = inputs.get("labels")
-        # forward pass
-        outputs = model(**inputs)
-        logits = outputs.logits
-        loss_fct = nn.CrossEntropyLoss()
-        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels)
-        return ((loss, outputs) if return_outputs else loss)
+# class CustomTrainerMC(Trainer):
+#     def compute_loss(self, model, inputs, return_outputs=False):
+#         labels = inputs.get("labels")
+#         # forward pass
+#         outputs = model(**inputs)
+#         logits = outputs.logits
+#         loss_fct = nn.CrossEntropyLoss()
+#         loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels)
+#         return ((loss, outputs) if return_outputs else loss)
 
 
-training_args_mc = TrainingArguments(
-    output_dir=temp_model_mc_path,
-    learning_rate=1e-6,
-    logging_steps=100,
-    per_device_train_batch_size=1,
-    num_train_epochs=0.1,
-    # metric_for_best_model='pcl_f1'
-)
+# training_args_mc = TrainingArguments(
+#     output_dir=temp_model_mc_path,
+#     learning_rate=1e-6,
+#     logging_steps=100,
+#     per_device_train_batch_size=1,
+#     num_train_epochs=0.1,
+#     # metric_for_best_model='pcl_f1'
+# )
 
-trainer_mc = CustomTrainerMC(
-    model=model_mc,
-    args=training_args_mc,
-    # data_collator=train_dataset_MC.collate_fn,
-    # train_dataset=train_dataset_MC
-)
+# trainer_mc = CustomTrainerMC(
+#     model=model_mc,
+#     args=training_args_mc,
+#     # data_collator=train_dataset_MC.collate_fn,
+#     # train_dataset=train_dataset_MC
+# )
+
+''' Custom model '''
+
+
+# class BERT_hate_speech(BertPreTrainedModel):
+#
+#     def __init__(self, config):
+#         super().__init__(config)
+#
+#         # BERT Model
+#         self.bert = BertModel(config)
+#
+#         # Task A
+#         self.projection_a = torch.nn.Sequential(torch.nn.Dropout(0.2),
+#                                                 torch.nn.Linear(config.hidden_size, 2))
+#
+#         # Task B
+#         # TBA
+#
+#         # Task C
+#         # TBA
+#
+#         self.init_weights()
+#
+#     def forward(
+#             self,
+#             input_ids=None,
+#             attention_mask=None,
+#             token_type_ids=None,
+#             position_ids=None,
+#             head_mask=None,
+#             inputs_embeds=None,
+#             labels=None,
+#             output_attentions=None,
+#             output_hidden_states=None,
+#             return_dict=None):
+#         outputs = self.bert(
+#             input_ids,
+#             attention_mask=attention_mask,
+#             token_type_ids=token_type_ids,
+#             position_ids=position_ids,
+#             head_mask=head_mask,
+#             inputs_embeds=inputs_embeds,
+#             output_attentions=output_attentions,
+#             output_hidden_states=output_hidden_states,
+#             return_dict=return_dict,
+#         )
+#
+#         # Logits A
+#         logits_a = self.projection_a(outputs[1])
+#
+#         return logits_a
+#
+#
+# model = BERT_hate_speech.from_pretrained("bert-base-cased")
+
+
+class MultiHeadPretrainedModel(BertPreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+
+        # BERT Model
+        self.model = BertModel(config)
+
+        # pcl classification
+        self.projection_cls = torch.nn.Sequential(torch.nn.Dropout(0.2),
+                                                  torch.nn.Linear(config.hidden_size, 2))
+
+        # Head0
+        self.projection_0 = torch.nn.Sequential(torch.nn.Dropout(0.2),
+                                                torch.nn.Linear(config.hidden_size, 2))
+
+        # Head1
+        self.projection_1 = torch.nn.Sequential(torch.nn.Dropout(0.2),
+                                                torch.nn.Linear(config.hidden_size, 2))
+        # Head2
+        self.projection_2 = torch.nn.Sequential(torch.nn.Dropout(0.2),
+                                                torch.nn.Linear(config.hidden_size, 2))
+
+        self.init_weights()
+
+    def forward(
+            self,
+            input_ids=None,
+            attention_mask=None,
+            token_type_ids=None,
+            position_ids=None,
+            head_mask=None,
+            inputs_embeds=None,
+            labels=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None):
+        outputs = self.model(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        # pcl
+        logits_cls = self.projection_cls(outputs[1])
+
+        # Logits 0
+        logits_0 = self.projection_0(outputs[1])
+
+        # Logits 0
+        logits_1 = self.projection_1(outputs[1])
+
+        # Logits 0
+        logits_2 = self.projection_2(outputs[1])
+
+        return logits_cls, logits_0, logits_1, logits_2
+
+
+model = MultiHeadPretrainedModel.from_pretrained(model_name)
 
 
 class CustomTrainer(Trainer):
-    def compute_loss(self, model, inputs, return_outputs=False, trainer_mc: CustomTrainerMC = trainer_mc):
+    def compute_loss(self, model, inputs, return_outputs=False):
         labels = inputs.get("labels")
+        categories = inputs.get('categories')
+        categories = categories.detach().cpu().numpy()
+        categories_0 = np.logical_or(categories[:, 0], categories[:, 1])
+        categories_1 = np.logical_or(categories[:, 2], categories[:, 3])
+        categories_2 = np.logical_or(categories[:, 4], categories[:, 5], categories[:, 6])
         # forward pass
-        inputs_cur = inputs.copy()
-        inputs_cur.pop('categories', None)
-        outputs = model(**inputs_cur)
-        logits = outputs.logits
+        inputs.pop('categories', None)
+        logits_cls, logits_0, logits_1, logits_2 = model(**inputs)
+        # logits = outputs.logits
         # weight_scale = len(train_df[train_df['label']==0])/len(train_df[train_df['label']==1])
         weight_scale = 1
-        loss_fct = nn.CrossEntropyLoss(weight=torch.tensor([1.0, weight_scale]).to(device))
+        loss_cls = nn.CrossEntropyLoss()
+        loss_0 = nn.CrossEntropyLoss()
+        loss_1 = nn.CrossEntropyLoss()
+        loss_2 = nn.CrossEntropyLoss()
 
-        # calculate the mc loss
-        inputs_cur = inputs.copy()
-        inputs_cur.pop('labels', None)
-        inputs_cur['labels'] = inputs_cur.pop('categories')
-
-        loss_MC = trainer_mc.training_step(trainer_mc.model, inputs_cur)
-        print(loss_MC)
         alpha = 0.1
 
-        loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1)) + alpha * loss_MC
-        return (loss, outputs) if return_outputs else loss
+        loss = loss_cls(logits_cls.view(-1, self.model.config.num_labels), labels.view(-1)) \
+               + alpha * loss_0(logits_0.view(-1, self.model.config.num_labels), labels.view(-1)) \
+               + alpha * loss_1(logits_1.view(-1, self.model.config.num_labels), labels.view(-1)) \
+               + alpha * loss_2(logits_2.view(-1, self.model.config.num_labels), labels.view(-1))
+        return (loss, logits_cls) if return_outputs else loss
 
 
 # validation_loader = DataLoader(eval_dataset)
@@ -222,7 +365,7 @@ training_args = TrainingArguments(
     output_dir=temp_model_path,
     learning_rate=1e-6,
     logging_steps=100,
-    eval_steps=500,
+    eval_steps=50,
     per_device_train_batch_size=4,
     per_device_eval_batch_size=4,
     num_train_epochs=4,
@@ -249,7 +392,7 @@ val_df.to_pickle('val_df.pickle')
 
 config = AutoConfig.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
-model = AutoModelForSequenceClassification.from_pretrained(model_path, config=config).to(device)
+model = MultiHeadPretrainedModel.from_pretrained(model_path, config=config).to(device)
 
 train_df = pd.read_pickle('train_df.pickle')
 val_df = pd.read_pickle('val_df.pickle')
