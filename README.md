@@ -9,7 +9,7 @@ To run training and evaluation just do:
 cd NLP_CW
 python NLP2077.py
 ```
-## Gudience
+## Result
 The results will be printed and model saved in NLP_CW/models
 
 ## IMPORTANT 
