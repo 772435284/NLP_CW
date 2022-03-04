@@ -1,11 +1,11 @@
-# NLP_CW
+Python requirement: 
+pip install transformers sklearn pandas
 
-## Change Code in NLP_CW
+To run training and evaluation just do:
+cd NLP_CW
+python NLP2077.py
+The results will be printed and model saved in NLP_CW/models
 
-## Change the code in your own branch first
-
-## The whole pipeline using curve is NLP_CW.ipynb:
-
-1. NLP_CW.ipynb: the  original version using downsampling
-
-2.  NLP_CW_1.0.ipynb: an updated version using oversampling, which makes positive and negative sample balance.
+IMPORTANT: 
+We trained our model on an nvidia v100 GPU with 32GB of memory
+Please change the batchsize on line 27 if you are out of memory
