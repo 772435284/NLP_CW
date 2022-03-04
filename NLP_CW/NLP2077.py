@@ -26,7 +26,7 @@ from dpm_preprocessing import DPMProprocessed
 import torch
 # from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, \
-    AutoModelForPreTraining, AutoModel, BertPreTrainedModel, BertModel
+    AutoModelForPreTraining, AutoModel, BertPreTrainedModel, BertModel, DebertaPreTrainedModel, DebertaModel
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
@@ -263,12 +263,12 @@ eval_dataset = PCLDataset(tokenizer, val_df)
 # model = BERT_hate_speech.from_pretrained("bert-base-cased")
 
 
-class MultiHeadPretrainedModel(BertPreTrainedModel):
+class MultiHeadPretrainedModel(DebertaPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
         # BERT Model
-        self.model = BertModel(config)
+        self.model = DebertaModel(config)
 
         # pcl classification
         self.projection_cls = torch.nn.Sequential(torch.nn.Dropout(0.2),
@@ -373,9 +373,9 @@ def compute_metric_eval(arg):
 
 training_args = TrainingArguments(
     output_dir=temp_model_path,
-    learning_rate=1e-6,
+    learning_rate=5e-6,
     logging_steps=100,
-    eval_steps=50,
+    eval_steps=500,
     per_device_train_batch_size=4,
     per_device_eval_batch_size=4,
     num_train_epochs=4,
@@ -415,8 +415,8 @@ def predict_pcl(input, tokenizer, model, threshold=0.5):
     model.eval()
     encodings = tokenizer(input, return_tensors='pt', padding=True, truncation=True, max_length=256)
     encodings = encodings.to(device)
-    output = model(**encodings)
-    logits = output.logits
+    logits_cls, logits_0, logits_1, logits_2 = model(**encodings)
+    logits = logits_cls
     prob = nn.functional.softmax(logits)[:, 1].cpu()
     preds = np.array([int(prob > threshold)])
     return {'prediction': preds, 'confidence': prob}
