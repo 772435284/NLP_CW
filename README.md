@@ -1,9 +1,14 @@
-Python requirement: 
+# COMP 70016 CW
+## Python requirement
+```
 pip install transformers sklearn pandas
-
+```
+## Gudience
 To run training and evaluation just do:
+```
 cd NLP_CW
 python NLP2077.py
+```
 The results will be printed and model saved in NLP_CW/models
 
 IMPORTANT: 
