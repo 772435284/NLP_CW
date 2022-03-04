@@ -26,13 +26,7 @@ tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
 MAX_SEQ_LEN = 256
 BATCH_SIZE = 9 #please update the batchsize if not enough memory, we trained on an nvidia v100 with 32BG of GPU memory
 
-WORKING_ENV = 'SERVER'  #  Can be JONAS, SERVER
-assert WORKING_ENV in ['JONAS', 'SERVER']
-
-if WORKING_ENV == 'SERVER':
-    temp_model_path = f'/hy-tmp/pcl/{model_name}/'
-if WORKING_ENV == 'JONAS':
-    temp_model_path = f'./experiment/pcl/{model_name}/'
+temp_model_path = f'./experiment/pcl/{model_name}/'
 
 #Dataset and training for training and evaluation
 class PCLDataset(torch.utils.data.Dataset):
