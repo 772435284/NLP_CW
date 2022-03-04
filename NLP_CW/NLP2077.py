@@ -162,8 +162,16 @@ def fillna(df):
             df_copy = df_copy.append(row)
     return df_copy
 
-train_df = fillna(join_with_categories(train_df))
-val_df = fillna(join_with_categories(val_df))
+
+if not os.path.isfile("traindf_with_categories.pickle") or not os.path.isfile("valdf_with_categories.pickle"):
+    train_df = fillna(join_with_categories(train_df))
+    val_df = fillna(join_with_categories(val_df))
+    train_df.to_pickle("traindf_with_categories.pickle")
+    val_df.to_pickle("valdf_with_categories.pickle")
+else:
+    train_df = pd.read_pickle("traindf_with_categories.pickle")
+    val_df = pd.read_pickle("valdf_with_categories.pickle")
+
 train_dataset = PCLDataset(tokenizer, train_df)
 eval_dataset = PCLDataset(tokenizer, val_df)
 
@@ -320,7 +328,7 @@ class MultiHeadPretrainedModel(BertPreTrainedModel):
 
 model = MultiHeadPretrainedModel.from_pretrained(model_name)
 
-
+losses = []
 class CustomTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         labels = inputs.get("labels")
@@ -346,7 +354,9 @@ class CustomTrainer(Trainer):
                + alpha * loss_0(logits_0.view(-1, self.model.config.num_labels), labels.view(-1)) \
                + alpha * loss_1(logits_1.view(-1, self.model.config.num_labels), labels.view(-1)) \
                + alpha * loss_2(logits_2.view(-1, self.model.config.num_labels), labels.view(-1))
-        return (loss, logits_cls) if return_outputs else loss
+        output = [loss, logits_cls]
+        losses.append(logits_cls)
+        return (loss, output) if return_outputs else loss
 
 
 # validation_loader = DataLoader(eval_dataset)
