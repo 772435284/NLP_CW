@@ -234,5 +234,5 @@ def labels2file(p, outf_path):
             outf.write(','.join([str(k) for k in pi]) + '\n')
 
 #preparing file for competition upload
-labels2file([[k] for k in preds], 'task1.txt')
+labels2file([k for k in preds], 'task1.txt')
 os.system("zip submission.zip task1.txt")
