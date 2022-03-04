@@ -1,4 +1,3 @@
-from hashlib import new
 from dont_patronize_me import DontPatronizeMe
 from dpm_preprocessing_utils import apply_preprocessing
 import pandas as pd
@@ -18,7 +17,6 @@ class DPMProprocessed(DontPatronizeMe):
 
         self.positive_samples = self.train_task1_df[self.train_task1_df['label'] == 1]
         self.negative_samples = self.train_task1_df[self.train_task1_df['label'] == 0]
-        print(self.train_task1_df)
 
     
     def _preprocess_all_df(self):
