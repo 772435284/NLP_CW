@@ -26,7 +26,9 @@ from dpm_preprocessing import DPMProprocessed
 import torch
 # from transformers import RobertaForSequenceClassification, RobertaTokenizer, Trainer, TrainingArguments, RobertaConfig
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, \
-    AutoModelForPreTraining, AutoModel, BertPreTrainedModel, BertModel, DebertaPreTrainedModel, DebertaModel
+    AutoModelForPreTraining, AutoModel, BertPreTrainedModel, BertModel, DebertaV2PreTrainedModel, DebertaV2Model
+from transformers.models.deberta.modeling_deberta import ContextPooler, StableDropout
+
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
@@ -40,8 +42,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 os.environ["WANDB_DISABLED"] = "true"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-# model_name = "microsoft/deberta-v2-xlarge"
-model_name = 'bert-base-uncased'
+model_name = "microsoft/deberta-v2-xlarge"
+# model_name = 'bert-base-uncased'
 assert model_name in ['roberta-base', 'bert-base-uncased', 'google/electra-small-discriminator',
                       "microsoft/deberta-v2-xlarge"]
 
@@ -49,7 +51,7 @@ model_path = f'./models/pcl_{model_name}_finetuned/model/'
 tokenizer_path = f'./models/pcl_{model_name}_finetuned/tokenizer/'
 MAX_SEQ_LEN = 256
 
-WORKING_ENV = 'JONAS'  #  Can be JONAS, SERVER
+WORKING_ENV = 'SERVER'  #  Can be JONAS, SERVER
 assert WORKING_ENV in ['JONAS', 'SERVER']
 
 if WORKING_ENV == 'SERVER':
@@ -263,12 +265,16 @@ eval_dataset = PCLDataset(tokenizer, val_df)
 # model = BERT_hate_speech.from_pretrained("bert-base-cased")
 
 
-class MultiHeadPretrainedModel(DebertaPreTrainedModel):
+class MultiHeadPretrainedModel(DebertaV2PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
+        drop_out = getattr(config, "cls_dropout", None)
+        drop_out = self.config.hidden_dropout_prob if drop_out is None else drop_out
+        self.dropout = StableDropout(drop_out)
+        self.pooler = ContextPooler(config)
 
         # BERT Model
-        self.model = DebertaModel(config)
+        self.model = DebertaV2Model(config)
 
         # pcl classification
         self.projection_cls = torch.nn.Sequential(torch.nn.Dropout(0.2),
@@ -293,35 +299,37 @@ class MultiHeadPretrainedModel(DebertaPreTrainedModel):
             attention_mask=None,
             token_type_ids=None,
             position_ids=None,
-            head_mask=None,
             inputs_embeds=None,
-            labels=None,
             output_attentions=None,
             output_hidden_states=None,
-            return_dict=None):
+            return_dict=None,):
         outputs = self.model(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             position_ids=position_ids,
-            head_mask=head_mask,
+            # head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
 
+        encoder_layer = outputs[0]
+        pooled_output = self.pooler(encoder_layer)
+        pooled_output = self.dropout(pooled_output)
+        
         # pcl
-        logits_cls = self.projection_cls(outputs[1])
+        logits_cls = self.projection_cls(pooled_output)
 
         # Logits 0
-        logits_0 = self.projection_0(outputs[1])
+        logits_0 = self.projection_0(pooled_output)
 
         # Logits 0
-        logits_1 = self.projection_1(outputs[1])
+        logits_1 = self.projection_1(pooled_output)
 
         # Logits 0
-        logits_2 = self.projection_2(outputs[1])
+        logits_2 = self.projection_2(pooled_output)
 
         return logits_cls, logits_0, logits_1, logits_2
 
@@ -333,10 +341,13 @@ class CustomTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         labels = inputs.get("labels")
         categories = inputs.get('categories')
-        categories = categories.detach().cpu().numpy()
-        categories_0 = np.logical_or(categories[:, 0], categories[:, 1])
-        categories_1 = np.logical_or(categories[:, 2], categories[:, 3])
-        categories_2 = np.logical_or(categories[:, 4], categories[:, 5], categories[:, 6])
+        inputs.pop("labels")
+        inputs.pop('categories')
+        # categories = categories.detach().cpu().numpy()
+        categories_0 = torch.logical_or(categories[:, 0], categories[:, 1]).long()
+        categories_1 = torch.logical_or(categories[:, 2], categories[:, 3]).long()
+        categories_2 = torch.logical_or(categories[:, 4], categories[:, 5]).long()
+        categories_2 = torch.logical_or(categories_2, categories[:, 6]).long()
         # forward pass
         inputs.pop('categories', None)
         logits_cls, logits_0, logits_1, logits_2 = model(**inputs)
@@ -348,12 +359,12 @@ class CustomTrainer(Trainer):
         loss_1 = nn.CrossEntropyLoss()
         loss_2 = nn.CrossEntropyLoss()
 
-        alpha = 0.1
+        alpha = 0.05
 
         loss = loss_cls(logits_cls.view(-1, self.model.config.num_labels), labels.view(-1)) \
-               + alpha * loss_0(logits_0.view(-1, self.model.config.num_labels), labels.view(-1)) \
-               + alpha * loss_1(logits_1.view(-1, self.model.config.num_labels), labels.view(-1)) \
-               + alpha * loss_2(logits_2.view(-1, self.model.config.num_labels), labels.view(-1))
+               + alpha * loss_0(logits_0.view(-1, self.model.config.num_labels), categories_0.view(-1)) \
+               + alpha * loss_1(logits_1.view(-1, self.model.config.num_labels), categories_1.view(-1)) \
+               + alpha * loss_2(logits_2.view(-1, self.model.config.num_labels), categories_2.view(-1))
         output = [loss, logits_cls]
         losses.append(logits_cls)
         return (loss, output) if return_outputs else loss
@@ -542,5 +553,5 @@ def labels2file(p, outf_path):
 
 
 labels2file([[k] for k in preds], 'task1.txt')
-os.system("!cat task1.txt | head -n 10")
-os.system("!zip submission.zip task1.txt")
+os.system("cat task1.txt | head -n 10")
+os.system("zip submission.zip task1.txt")
